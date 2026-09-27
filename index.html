@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FFT Spectrogram Visualizer</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    canvas {
+      border: 1px solid #444;
+      background-color: #000;
+      width: 95vw;
+      height: 70vh;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 18px;
+      margin-bottom: 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <button id="startBtn">마이크 시작</button>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let audioCtx;
+    let analyser;
+    let dataArray;
+
+    startBtn.addEventListener('click', async () => {
+      startBtn.style.display = 'none';
+      
+      // Canvas 해상도 설정
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        const source = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512; // 주파수 해상도 (256, 512, 1024, 2048 등)
+
+        const bufferLength = analyser.frequencyBinCount;
+        dataArray = new Uint8Array(bufferLength);
+
+        source.connect(analyser);
+
+        drawSpectrogram();
+      } catch (err) {
+        alert('마이크 접근 권한이 필요합니다: ' + err);
+      }
+    });
+
+    function drawSpectrogram() {
+      requestAnimationFrame(drawSpectrogram);
+
+      analyser.getByteFrequencyData(dataArray);
+
+      // 기존 Canvas 화면을 왼쪽으로 1px 이동 (Time 흐름 표현)
+      const imageData = ctx.getImageData(1, 0, canvas.width - 1, canvas.height);
+      ctx.putImageData(imageData, 0, 0);
+
+      // 맨 오른쪽 1px 라인에 현재 시점의 FFT 주파수 데이터 그리기
+      const binHeight = canvas.height / dataArray.length;
+      
+      for (let i = 0; i < dataArray.length; i++) {
+        const value = dataArray[i]; // 0 ~ 255
+        
+        // 진폭(값)을 HSL 색상 모델로 매핑 (높을수록 빨강/밝게)
+        const hue = (1 - value / 255) * 240; // 240(파랑) -> 0(빨강)
+        const lightness = value > 0 ? (value / 255) * 50 + 10 : 0;
+        
+        ctx.fillStyle = `hsl(${hue}, 100%, ${lightness}%)`;
+        
+        // 저주파수가 아래쪽, 고주파수가 위쪽에 위치하도록 Y축 계산
+        const y = canvas.height - (i + 1) * binHeight;
+        ctx.fillRect(canvas.width - 1, y, 1, binHeight + 1);
+      }
+    }
+  </script>
+</body>
+</html>
